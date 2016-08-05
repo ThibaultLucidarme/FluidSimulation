@@ -1,0 +1,179 @@
+<html>
+
+<head>
+    <title>WebGL : Particle System</title>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8">
+    <style>
+        html,
+        body {
+            height: 100%;
+        }
+        
+        body {
+            padding: 0px;
+            margin: 0px;
+            overflow: hidden;
+        }
+        
+        canvas {
+            position: absolute;
+            top: 0px;
+            left: 0px;
+            width: 100%;
+            height: 100%;
+        }
+    </style>
+    <!--
+			Define a simple GLSL (OpenGL Shading Language) fragment shader.
+			More info: http://en.wikipedia.org/wiki/GLSL
+			-->
+    <script id="shader-fs" type="x-shader/x-fragment">
+        precision mediump float; varying float alpha; void main(void) { gl_FragColor = vec4(1,1,1,alpha); }
+    </script>
+    <!--
+			Define a simple GLSL (OpenGL Shading Language) vertex shader.
+			More info: http://en.wikipedia.org/wiki/GLSL
+			-->
+    <script id="shader-vs" type="x-shader/x-vertex">
+        attribute vec3 vertexPosition; uniform mat4 modelViewMatrix; uniform mat4 perspectiveMatrix; varying float alpha; void main(void) { gl_PointSize = 1.0; alpha = exp(vertexPosition.z); gl_Position = perspectiveMatrix * modelViewMatrix * vec4(vertexPosition, 1.0); }
+
+    </script>
+    <script type="text/javascript" src="RequestAnimationFrame.js"></script>
+    <script type="text/javascript" src="Track.js"></script>
+    <script type="text/javascript" src="WebGLShaderProgram.js"></script>
+    <script type="text/javascript" src="WebGLParticle.js"></script>
+
+</head>
+
+<body>
+    <canvas id="webGLCanvas"></canvas>
+
+    <script type="text/javascript">
+        //    Get the canvas element
+        var canvas = document.getElementById("webGLCanvas");
+        var gl = canvas.getContext("experimental-webgl");
+        if (!gl) {
+            alert("There's no WebGL context available.");
+        }
+
+        //    Set the viewport to the canvas width and height
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        gl.viewport(0, 0, canvas.width, canvas.height);
+        
+        
+        
+        
+        var particles = new WebGLParticles(gl, getValueOfURLParameter("particle")||200000);
+
+
+        var shaderProgram = new WebGLShaderProgram(gl);
+        shaderProgram.GetFragmentShader();
+        shaderProgram.GetVertexShader();
+
+        shaderProgram.Use();
+        gl.clear(self.gl.COLOR_BUFFER_BIT | self.gl.DEPTH_BUFFER_BIT);
+        gl.clearColor(0.0, 0.0, 0.0, 1.0);
+        gl.depthFunc(gl.LESS);
+        gl.enable(gl.DEPTH_TEST);
+
+
+
+
+
+        var perspectiveMatrix = getFrustrumMatrix(120, canvas.width / canvas.height, 0.1, 10000);
+        //var perspectiveMatrix = makePerspective(Math.PI/2, canvas.width / canvas.height, 0.1, 10000);
+        var modelViewMatrix = [
+					1, 0, 0, 0,
+					0, 1, 0, 0,
+					0, 0, 1, 0,
+					0, 0, 0, 1
+				];
+
+
+
+        particles.Load(modelViewMatrix, perspectiveMatrix, shaderProgram.GetProgram());
+        //        setIntervalX(function () {
+        //                particles.Update();
+        //                particles.Draw();
+        //            }, 1000, 10)
+
+        RunSimulation();
+
+
+
+
+        function RunSimulation() {
+            requestAnimationFrame(RunSimulation);
+            particles.Update();
+            particles.Draw();
+        }
+
+        function setIntervalX(callback, delay, repetitions) {
+            var x = 0;
+            var intervalID = window.setInterval(function () {
+
+                callback();
+
+                if (++x === repetitions) {
+                    window.clearInterval(intervalID);
+                }
+            }, delay);
+        }
+
+        function getFrustrumMatrix(fieldOfView, aspectRatio, nearPlane, farPlane) {
+
+            var vtop = nearPlane * Math.tan(fieldOfView * Math.PI / 360.0);
+            var vbottom = -vtop;
+            var vright = vtop * aspectRatio;
+            var vleft = -vright;
+
+            //     glFrustum() is not included in the WebGL API. That's why we have to do it manually here.
+            //     More info: http://www.cs.utk.edu/~vose/c-stuff/opengl/glFrustum.html
+            var a = (vright + vleft) / (vright - vleft);
+            var b = (vtop + vbottom) / (vtop - vbottom);
+            var c = (farPlane + nearPlane) / (farPlane - nearPlane);
+            var d = (2 * farPlane * nearPlane) / (farPlane - nearPlane);
+            var x = (2 * nearPlane) / (vright - vleft);
+            var y = (2 * nearPlane) / (vtop - vbottom);
+            var perspectiveMatrix = [
+					x, 0, a, 0,
+					0, y, b, 0,
+					0, 0, c, d,
+					0, 0, -1, 0
+				];
+
+            return perspectiveMatrix;
+
+        }
+		
+function makePerspective(fieldOfViewInRadians, aspect, near, far) {
+  var f = Math.tan(Math.PI * 0.5 - 0.5 * fieldOfViewInRadians);
+  var rangeInv = 1.0 / (near - far);
+ 
+  return [
+    f / aspect, 0, 0, 0,
+    0, f, 0, 0,
+    0, 0, (near + far) * rangeInv, near * far * rangeInv * 2,
+    0, 0, -1, 0 
+  ];
+};
+ 
+        
+        function getValueOfURLParameter(parameter) {
+
+    var uri = decodeURIComponent(document.location.search)
+
+    var regex = new RegExp("[?&]" + parameter + "=.+?(?=(&|$))", "i");
+    if (regex.test(uri))
+        return uri.match(regex)[0].split("=")[1];
+    else
+        return undefined;
+
+}
+    </script>
+
+
+</body>
+
+</html>

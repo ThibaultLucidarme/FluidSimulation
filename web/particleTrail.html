@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+    <meta http-equiv="Content-Type" content="text/html;charset=utf-8" />
+    <script type="text/javascript" src="glMatrix-0.9.5.min.js"></script>
+
+    <title>WebGL Particle trail</title>
+
+    <script id="shader-vs" type="x-shader/x-vertex">
+        attribute vec2 vertex; 
+        attribute vec2 velocity; 
+        attribute float timeOfBirth; 
+        uniform float currentTime; 
+        
+        void main(void) { 
+            float speed = 1.0; 
+            bool isAlive = (timeOfBirth == 0.0); 
+            float particleAge = currentTime - timeOfBirth; 
+            
+            if (isAlive){ 
+                gl_Position = vec4(999.0,0.0,0.0,1.0); // move outside view frustum 
+            } else { 
+                gl_Position = vec4(vertex + speed * velocity * particleAge,0.0,1.0); 
+            } 
+            gl_PointSize = 10.0; 
+        }
+    </script>
+
+    <script id="shader-fs" type="x-shader/x-fragment">
+        precision mediump float; void main(void) { float alpha = 1.0-length((gl_PointCoord-0.5)*2.0); gl_FragColor = vec4(1.0,1.0,1.0,alpha); }
+    </script>
+
+    <script id="shader-fs2" type="x-shader/x-fragment">
+        void main(void) { gl_FragColor = vec4(1,1,1,1); }
+    </script>
+
+
+
+</head>
+
+<body>
+
+
+    <canvas id="webgl-container" style="border: none;" width="500" height="500"></canvas>
+
+    <script type="text/javascript">
+        "use strict"; // strict html5
+
+        var lastX, lastY;
+        var startTimeSeconds = Date.now() / 1000;
+        var currentTime = 0;
+        var particleBuffer;
+        var shaderProgram;
+
+        var vertexBufferSize = 100, //trail length
+            particleSize = 2 + 2 + 1, // position (vec2), velocity (vec2), timeOfBirth (float)
+            particleId = 0;
+
+        function bindAttributes() {
+            var sizeOfFloat = 4;
+            var vertexLocation = gl.getAttribLocation(shaderProgram, "vertex");
+            gl.enableVertexAttribArray(vertexLocation);
+            gl.vertexAttribPointer(vertexLocation, 2, gl.FLOAT, false, 5 * sizeOfFloat, 0);
+            var velocityLocation = gl.getAttribLocation(shaderProgram, "velocity");
+            gl.enableVertexAttribArray(velocityLocation);
+            gl.vertexAttribPointer(velocityLocation, 2, gl.FLOAT, false, 5 * sizeOfFloat, 2 * sizeOfFloat);
+            var timeOfBirthLocation = gl.getAttribLocation(shaderProgram, "timeOfBirth");
+            gl.enableVertexAttribArray(timeOfBirthLocation);
+            gl.vertexAttribPointer(timeOfBirthLocation, 1, gl.FLOAT, false, 5 * sizeOfFloat, 4 * sizeOfFloat);
+        }
+
+        function createVertexBufferObject() {
+            particleBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, particleBuffer);
+            var vertices = new Float32Array(vertexBufferSize * particleSize);
+            gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.DYNAMIC_DRAW);
+            bindAttributes();
+        }
+
+        function emitParticle(x, y, velocityX, velocityY) {
+            gl.bindBuffer(gl.ARRAY_BUFFER, particleBuffer);
+            var data = new Float32Array(5);
+            data[0] = x;
+            data[1] = y;
+            data[2] = velocityX;
+            data[3] = velocityY;
+            data[4] = currentTime;
+            var sizeOfFloat = 4;
+            gl.bufferSubData(gl.ARRAY_BUFFER, particleId * particleSize * sizeOfFloat, data);
+            particleId = (particleId + 1) % vertexBufferSize;
+        }
+
+        function mouseMoveEvent(e, onlyRead) {
+            // assumes canvas is in upper left corner
+            var x = e.clientX;
+            var y = e.clientY;
+            // change position to clip coordinates [-1:1]
+            x = (x * 2 / canvas.width) - 1;
+            y = (y * 2 / canvas.height) - 1;
+            y = y * -1; // flip the y-axis
+            if (!onlyRead) { // only emit particle after click (to keep sane velocity)
+                var velocityX = x - lastX;
+                var velocityY = y - lastY;
+                emitParticle(x, y, velocityX, velocityY);
+            }
+            lastX = x;
+            lastY = y;
+        }
+
+        function mouseDownEvent(e) {
+            canvas.onmousemove = mouseMoveEvent;
+        }
+
+        function mouseUpEvent(e) {
+            canvas.onmousemove = null;
+        }
+
+        function draw() {
+            currentTime = Date.now() / 1000 - startTimeSeconds;
+            gl.uniform1f(gl.getUniformLocation(shaderProgram, "currentTime"), currentTime);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+            gl.drawArrays(gl.POINTS, 0, vertexBufferSize);
+        }
+
+        function setupShader() {
+
+            var vertexShader = GetShader("shader-vs", gl.VERTEX_SHADER);
+            var fragmentShader = GetShader("shader-fs", gl.FRAGMENT_SHADER);
+
+
+            shaderProgram = gl.createProgram();
+            gl.attachShader(shaderProgram, vertexShader);
+            gl.attachShader(shaderProgram, fragmentShader);
+            gl.linkProgram(shaderProgram);
+
+            if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
+                gl.deleteProgram(shaderProgram);
+                gl.deleteShader(vertexShader);
+                gl.deleteShader(fragmentShader);
+            }
+
+            gl.useProgram(shaderProgram);
+        }
+
+        var canvas = document.getElementById("webgl-container");
+        var gl = canvas.getContext("webgl");
+        if (!gl) {
+            // alternative name
+            gl = canvas.getContext("experimental-webgl");
+        }
+        // make debug context (check glError after each gl-function call)
+        //        gl = WebGLDebugUtils.makeDebugContext(gl);
+        gl.clearColor(0.0, 0.0, 0.0, 1.0);
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+        canvas.onmousedown = mouseDownEvent;
+        canvas.onmouseup = mouseUpEvent;
+        setupShader();
+        createVertexBufferObject();
+        setInterval(draw, 16);
+
+
+
+        function GetShader(id, type) {
+
+            //    Load the fragment shader that's defined in a separate script
+            var shaderScript = document.getElementById(id);
+            var shader = gl.createShader(type);
+            gl.shaderSource(shader, shaderScript.text);
+            gl.compileShader(shader);
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                alert("Couldn't compile "+( (type===gl.VERTEX_SHADER)?"vertex":"fragment"  )+" shader");
+                gl.deleteShader(shader);
+                return;
+            }
+
+            return shader;
+
+        }
+    </script>
+
+
+
+</body>
+
+</html>
